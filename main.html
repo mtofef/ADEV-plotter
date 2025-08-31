@@ -87,19 +87,19 @@
             </label>
             <textarea id="dataInput" rows="10" class="w-full p-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors duration-200" placeholder="A comprehensive ADEV plot typically shows different noise regimes.
 Example values:&#10;
-# White Noise (slope = -1/2)&#10;
-0.01, 1e-7&#10;
-0.1, 3e-8&#10;
-1, 1e-8&#10;
-10, 3e-9&#10;
-100, 1e-9&#10;
+# White Frequency Modulation (slope = -1)&#10;
+0.001, 1e-10&#10;
+0.01, 1e-11&#10;
+0.1, 1e-12&#10;
+1, 1e-13&#10;
 &#10;
-# Bias Instability (flat floor)&#10;
-1000, 1.2e-9&#10;
+# Flicker Frequency Modulation (slope = 0)&#10;
+10, 1.5e-13&#10;
+100, 1.8e-13&#10;
 &#10;
-# Random Walk (slope = +1/2)&#10;
-10000, 4e-9&#10;
-100000, 1e-8&#10;"></textarea>
+# Random Walk Frequency Modulation (slope = +1/2)&#10;
+1000, 5e-13&#10;
+10000, 1e-12&#10;"></textarea>
 
             <div class="mt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
                 <button id="plotButton" class="w-full sm:w-1/2 bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200">
@@ -342,22 +342,22 @@ Example values:&#10;
                     }
                 } else {
                     // Document does not exist, initialize with example data and save it
-                    const exampleData = `# White Noise (slope = -1/2)
-0.01, 1e-7
-0.1, 3e-8
-1, 1e-8
-10, 3e-9
-100, 1e-9
+                    const exampleData = `# White Frequency Modulation (slope = -1)
+0.001, 1e-10
+0.01, 1e-11
+0.1, 1e-12
+1, 1e-13
 
-# Bias Instability (flat floor)
-1000, 1.2e-9
+# Flicker Frequency Modulation (slope = 0)
+10, 1.5e-13
+100, 1.8e-13
 
-# Random Walk (slope = +1/2)
-10000, 4e-9
-100000, 1e-8`;
+# Random Walk Frequency Modulation (slope = +1/2)
+1000, 5e-13
+10000, 1e-12`;
                     
                     const exampleDatasets = [{
-                        label: "Example Data",
+                        label: "PRTC-B Data",
                         data: parseData(exampleData),
                         borderColor: lineColors[colorIndex++ % lineColors.length],
                         backgroundColor: lineColors[colorIndex % lineColors.length],
