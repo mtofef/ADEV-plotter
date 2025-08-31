@@ -24,25 +24,53 @@
             max-height: 200px;
             overflow-y: auto;
         }
+        /* Modal styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
     </style>
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { 
+            getAuth, 
+            onAuthStateChanged,
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            signOut
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Expose Firebase services to the global scope
         window.firebase = {
             initializeApp,
             getAuth,
-            signInAnonymously,
-            signInWithCustomToken,
             onAuthStateChanged,
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            signOut,
             getFirestore,
             doc,
             setDoc,
             onSnapshot,
+            getDoc,
             setLogLevel
         };
     </script>
@@ -51,11 +79,53 @@
     <main class="w-full max-w-4xl bg-white rounded-xl shadow-lg p-6 md:p-8">
         <header class="text-center mb-6">
             <h1 class="text-3xl md:text-4xl font-black text-slate-900">Allan Deviation (ADEV) Plotter</h1>
-            <p class="mt-2 text-md text-slate-600">Enter your data to visualize frequency stability using an ADEV plot. You can now add and remove multiple graphs to compare different datasets.</p>
-            <div class="mt-4 text-xs font-semibold text-slate-500">
-                Your User ID: <span id="userIdDisplay" class="font-mono text-slate-700">Loading...</span>
-            </div>
+            <p id="auth-status" class="mt-2 text-sm text-slate-500">
+                You are currently not logged in.
+            </p>
         </header>
+
+        <!-- Authentication Section -->
+        <section id="auth-section" class="mb-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-700 mb-4">Account</h2>
+            <div id="logged-out-view" class="space-y-4">
+                <input type="email" id="emailInput" class="w-full p-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Email">
+                <input type="password" id="passwordInput" class="w-full p-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Password">
+                <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                    <button id="loginButton" class="w-full sm:w-1/2 bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200">
+                        Log In
+                    </button>
+                    <button id="signupButton" class="w-full sm:w-1/2 bg-blue-400 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-blue-500 transition-colors duration-200">
+                        Sign Up
+                    </button>
+                </div>
+            </div>
+            <div id="logged-in-view" class="hidden flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 items-center">
+                <span id="userEmailDisplay" class="font-semibold text-slate-700"></span>
+                <button id="logoutButton" class="bg-red-500 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-red-600 transition-colors duration-200">
+                    Log Out
+                </button>
+            </div>
+        </section>
+
+        <section class="mb-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+            <h2 class="text-lg font-semibold text-slate-700 mb-2">Manage Public Plots</h2>
+            <p class="text-sm text-slate-500 mb-4">
+                Public plots are tied to your account. You can load and save your own public plots from any device.
+            </p>
+            <label for="publicNameInput" class="block text-sm font-semibold text-slate-700 mb-2">
+                Public Plot Name
+            </label>
+            <input type="text" id="publicNameInput" class="w-full p-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors duration-200" placeholder="e.g., MyGyroData">
+            
+            <div class="mt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+                <button id="savePublicButton" class="w-full sm:w-1/2 bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200">
+                    Save Public Plot
+                </button>
+                <button id="loadPublicButton" class="w-full sm:w-1/2 bg-slate-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-slate-700 transition-colors duration-200">
+                    Load Public Plot
+                </button>
+            </div>
+        </section>
 
         <div id="chartSection" class="relative">
             <div class="chart-container">
@@ -75,12 +145,31 @@
                 <li class="text-slate-500">No graphs plotted yet.</li>
             </ul>
         </div>
+        
+        <div id="modal-container" class="hidden modal">
+            <div class="modal-content">
+                <p id="modal-message" class="text-slate-800"></p>
+                <button onclick="closeModal()" class="mt-4 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200">
+                    OK
+                </button>
+            </div>
+        </div>
 
         <section class="mb-6">
-            <label for="graphName" class="block text-sm font-semibold text-slate-700 mb-2">
-                Graph Name
-            </label>
-            <input type="text" id="graphName" class="w-full p-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors duration-200" placeholder="e.g., Gyroscope 1, Oscillator A">
+            <div class="flex items-center space-x-4 mb-4">
+                <div class="flex-1">
+                    <label for="graphName" class="block text-sm font-semibold text-slate-700 mb-2">
+                        Graph Name
+                    </label>
+                    <input type="text" id="graphName" class="w-full p-3 border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors duration-200" placeholder="e.g., Gyroscope 1, Oscillator A">
+                </div>
+                <div>
+                    <label for="colorPicker" class="block text-sm font-semibold text-slate-700 mb-2">
+                        Color
+                    </label>
+                    <input type="color" id="colorPicker" value="#2176FF" class="w-16 h-12 p-1 border-2 border-slate-300 rounded-lg cursor-pointer">
+                </div>
+            </div>
 
             <label for="dataInput" class="block text-sm font-semibold text-slate-700 mb-2 mt-4">
                 Enter your data below (tau, ADEV value per line)
@@ -102,11 +191,16 @@ Example values:&#10;
 10000, 1e-12&#10;"></textarea>
 
             <div class="mt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
-                <button id="plotButton" class="w-full sm:w-1/2 bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200">
+                <button id="plotButton" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200">
                     Add Graph
                 </button>
+            </div>
+            <div class="mt-4 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
                 <button id="clearButton" class="w-full sm:w-1/2 bg-slate-400 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-slate-500 transition-colors duration-200">
                     Clear All Graphs
+                </button>
+                <button id="saveButton" class="w-full sm:w-1/2 bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:bg-green-700 transition-colors duration-200">
+                    Save My Data
                 </button>
             </div>
         </section>
@@ -118,7 +212,20 @@ Example values:&#10;
     </footer>
 
     <script type="module">
-        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, onSnapshot, setLogLevel } = window.firebase;
+        const { 
+            initializeApp, 
+            getAuth, 
+            onAuthStateChanged,
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            signOut,
+            getFirestore, 
+            doc, 
+            setDoc, 
+            onSnapshot, 
+            getDoc, 
+            setLogLevel 
+        } = window.firebase;
         
         const energeticPalette = {
             blue1: '#2176FF',
@@ -129,31 +236,53 @@ Example values:&#10;
             subText: '#A0AEC0'
         };
 
-        const lineColors = [
-            '#2176FF', '#33A1FD', '#EF4444', '#10B981', '#F97316', '#6366F1', '#EC4899', '#84CC16', '#A855F7'
-        ];
-        let colorIndex = 0;
-        
         const chartCtx = document.getElementById('adevChart').getContext('2d');
         const graphNameInput = document.getElementById('graphName');
         const dataInput = document.getElementById('dataInput');
+        const colorPicker = document.getElementById('colorPicker');
         const plotButton = document.getElementById('plotButton');
         const clearButton = document.getElementById('clearButton');
+        const saveButton = document.getElementById('saveButton');
+        const savePublicButton = document.getElementById('savePublicButton');
+        const loadPublicButton = document.getElementById('loadPublicButton');
         const errorMessage = document.getElementById('error-message');
         const loadingMessage = document.getElementById('loading-message');
         const activeGraphsList = document.getElementById('activeGraphsList');
-        const userIdDisplay = document.getElementById('userIdDisplay');
+        const publicNameInput = document.getElementById('publicNameInput');
+        const modalContainer = document.getElementById('modal-container');
+        const modalMessage = document.getElementById('modal-message');
+
+        // Auth UI elements
+        const authStatus = document.getElementById('auth-status');
+        const loggedOutView = document.getElementById('logged-out-view');
+        const loggedInView = document.getElementById('logged-in-view');
+        const emailInput = document.getElementById('emailInput');
+        const passwordInput = document.getElementById('passwordInput');
+        const loginButton = document.getElementById('loginButton');
+        const signupButton = document.getElementById('signupButton');
+        const logoutButton = document.getElementById('logoutButton');
+        const userEmailDisplay = document.getElementById('userEmailDisplay');
 
         let adevChart;
         let db;
         let auth;
         let userId;
-        let firestoreDocRef;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : '';
+        let privateDocRef;
+        let editingIndex = null;
+        let originalGraphName = '';
         
-        setLogLevel('debug');
+        // PASTE YOUR FIREBASE CONFIG HERE
+        // Replace this entire const block with the 'firebaseConfig' object from your Firebase project settings
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        const appId = firebaseConfig.projectId;
+        const initialAuthToken = null;
         
         const parseData = (data) => {
             if (!data) return null;
@@ -171,15 +300,88 @@ Example values:&#10;
             return parsed;
         };
 
+        const prtcAData = `0.001, 1e-11
+0.01, 1e-12
+0.1, 1e-13
+1, 1e-14
+10, 1.2e-14
+100, 1.3e-14
+1000, 4e-14
+10000, 1e-13`;
+        
+        const prtcBData = `0.001, 1e-10
+0.01, 1e-11
+0.1, 1e-12
+1, 1e-13
+10, 1.5e-13
+100, 1.8e-13
+1000, 5e-13
+10000, 1e-12`;
+        
+        const exampleDatasets = [
+            {
+                label: "PRTC-A",
+                data: parseData(prtcAData),
+                color: "#EF4444"
+            },
+            {
+                label: "PRTC-B",
+                data: parseData(prtcBData),
+                color: "#10B981"
+            }
+        ];
+        
+        setLogLevel('debug');
+        
+        const showModal = (message) => {
+            modalMessage.textContent = message;
+            modalContainer.classList.remove('hidden');
+        };
+
+        window.closeModal = () => {
+            modalContainer.classList.add('hidden');
+        };
+        
+        const resetInputState = () => {
+            graphNameInput.value = '';
+            dataInput.value = '';
+            colorPicker.value = energeticPalette.blue1;
+            editingIndex = null;
+            originalGraphName = '';
+            plotButton.textContent = 'Add Graph';
+            errorMessage.classList.add('hidden');
+        };
+
+        graphNameInput.addEventListener('input', () => {
+            const currentValue = graphNameInput.value.trim();
+            if (editingIndex !== null && currentValue === originalGraphName) {
+                plotButton.textContent = 'Update Graph';
+            } else {
+                plotButton.textContent = 'Add Graph';
+            }
+        });
+
         const createChart = (datasets = []) => {
             if (adevChart) {
                 adevChart.destroy();
             }
+            const chartDatasets = datasets.map((d) => ({
+                label: d.label,
+                data: d.data,
+                originalData: d.originalData || d.data,
+                borderColor: d.color,
+                backgroundColor: d.color,
+                pointBackgroundColor: d.color,
+                pointBorderColor: '#fff',
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                showLine: true
+            }));
 
             adevChart = new Chart(chartCtx, {
                 type: 'line',
                 data: {
-                    datasets: datasets
+                    datasets: chartDatasets
                 },
                 options: {
                     responsive: true,
@@ -272,188 +474,326 @@ Example values:&#10;
                 li.className = 'flex items-center justify-between p-2 rounded-md transition-colors duration-200 hover:bg-slate-200';
                 li.innerHTML = `
                     <span class="text-slate-800 font-medium">${dataset.label}</span>
-                    <button class="remove-btn bg-red-500 text-white text-sm font-semibold px-2 py-1 rounded-md shadow-sm hover:bg-red-600 transition-colors duration-200" data-index="${index}">
-                        Remove
-                    </button>
+                    <div class="space-x-2">
+                        <button class="restore-btn bg-slate-600 text-white text-xs font-semibold px-2 py-1 rounded-md shadow-sm hover:bg-slate-700 transition-colors duration-200" data-index="${index}">
+                            Restore Default
+                        </button>
+                        <button class="edit-btn bg-slate-500 text-white text-xs font-semibold px-2 py-1 rounded-md shadow-sm hover:bg-slate-600 transition-colors duration-200" data-index="${index}">
+                            Edit
+                        </button>
+                        <button class="remove-btn bg-red-500 text-white text-xs font-semibold px-2 py-1 rounded-md shadow-sm hover:bg-red-600 transition-colors duration-200" data-index="${index}">
+                            Remove
+                        </button>
+                    </div>
                 `;
                 activeGraphsList.appendChild(li);
             });
+            
+            document.querySelectorAll('.restore-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = e.target.getAttribute('data-index');
+                    const dataset = adevChart.data.datasets[index];
+                    
+                    if (dataset.originalData) {
+                        dataset.data = JSON.parse(JSON.stringify(dataset.originalData)); // Deep clone
+                        adevChart.update();
+                        showModal(`The graph for "${dataset.label}" has been restored to its previous state.`);
+                    } else {
+                        showModal(`No default data found for the graph named "${dataset.label}".`);
+                    }
+                });
+            });
+
             document.querySelectorAll('.remove-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const index = e.target.getAttribute('data-index');
                     adevChart.data.datasets.splice(index, 1);
                     adevChart.update();
                     updateGraphList();
-                    savePlotsToFirestore();
+                });
+            });
+
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = e.target.getAttribute('data-index');
+                    const dataset = adevChart.data.datasets[index];
+                    
+                    graphNameInput.value = dataset.label;
+                    dataInput.value = dataset.data.map(point => `${point.x}, ${point.y}`).join('\n');
+                    colorPicker.value = dataset.borderColor;
+                    
+                    editingIndex = parseInt(index);
+                    originalGraphName = dataset.label;
+                    plotButton.textContent = 'Update Graph';
+
+                    graphNameInput.scrollIntoView({ behavior: 'smooth' });
+                    errorMessage.classList.add('hidden');
                 });
             });
         };
 
-        const savePlotsToFirestore = async () => {
+        const saveToFirestore = async (docRef, docData, successMessage) => {
             if (!userId) {
-                console.error("User not authenticated. Cannot save data.");
+                showModal("Error: User authentication is not complete. Please log in to save your plots.");
                 return;
             }
-            
-            const datasetsToSave = adevChart.data.datasets.map(dataset => ({
-                label: dataset.label,
-                data: dataset.data
-            }));
-            
             try {
-                await setDoc(firestoreDocRef, { datasets: datasetsToSave });
-                console.log("Plots saved successfully!");
+                await setDoc(docRef, docData);
+                console.log(successMessage);
+                showModal(successMessage);
             } catch (e) {
-                console.error("Error saving plots to Firestore: ", e);
+                console.error("Error saving data to Firestore: ", e);
+                if (e.code === 'permission-denied' || e.code === 'unauthenticated') {
+                    showModal("Permission Error: Failed to save. The app's security rules may need to be updated to allow this action.");
+                } else {
+                    showModal("An unexpected error occurred while saving your data. Please check the console for details.");
+                }
             }
         };
 
-        const loadPlotsFromFirestore = () => {
-            if (!userId) {
-                console.error("User not authenticated. Cannot load data.");
-                return;
-            }
-
+        const loadFromFirestore = async (docRef) => {
             loadingMessage.classList.remove('hidden');
-
-            // Listen for real-time updates to the document
-            onSnapshot(firestoreDocRef, (docSnap) => {
+            try {
+                const docSnap = await getDoc(docRef);
                 loadingMessage.classList.add('hidden');
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     if (data && data.datasets) {
-                        const loadedDatasets = data.datasets.map(d => ({
-                            label: d.label,
-                            data: d.data,
-                            borderColor: lineColors[colorIndex++ % lineColors.length],
-                            backgroundColor: lineColors[colorIndex % lineColors.length],
-                            pointBackgroundColor: lineColors[colorIndex % lineColors.length],
-                            pointBorderColor: '#fff',
-                            pointRadius: 6,
-                            pointHoverRadius: 8,
-                            showLine: true
-                        }));
-                        createChart(loadedDatasets);
+                        createChart(data.datasets);
                         updateGraphList();
+                        return true;
+                    }
+                }
+                return false;
+            } catch (e) {
+                console.error("Error loading data from Firestore: ", e);
+                loadingMessage.classList.add('hidden');
+                if (e.code === 'permission-denied' || e.code === 'unauthenticated') {
+                    showModal("Permission Error: Failed to load data. The app's security rules may need to be updated to allow this action.");
+                } else {
+                    showModal("An unexpected error occurred while loading your data. Please check the console for details.");
+                }
+                return false;
+            }
+        };
+
+        const handleAuthStateChange = async (user) => {
+            if (user) {
+                userId = user.uid;
+                authStatus.textContent = `Logged in as: ${user.email || 'Anonymous'}`;
+                loggedOutView.classList.add('hidden');
+                loggedInView.classList.remove('hidden');
+                if (user.email) {
+                    userEmailDisplay.textContent = user.email;
+                } else {
+                    userEmailDisplay.textContent = 'Anonymous User';
+                }
+                privateDocRef = doc(db, `artifacts/${appId}/users/${userId}/adev_plots/myPlots`);
+                console.log("Authenticated with user ID:", userId);
+                loadingMessage.classList.remove('hidden');
+                const docSnap = await getDoc(privateDocRef);
+                loadingMessage.classList.add('hidden');
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data && data.datasets) {
+                        createChart(data.datasets);
                     } else {
-                        // Document exists but is empty, clear the chart
-                        createChart();
-                        updateGraphList();
+                        createChart(exampleDatasets);
                     }
                 } else {
-                    // Document does not exist, initialize with example data and save it
-                    const exampleData = `# White Frequency Modulation (slope = -1)
-0.001, 1e-10
-0.01, 1e-11
-0.1, 1e-12
-1, 1e-13
-
-# Flicker Frequency Modulation (slope = 0)
-10, 1.5e-13
-100, 1.8e-13
-
-# Random Walk Frequency Modulation (slope = +1/2)
-1000, 5e-13
-10000, 1e-12`;
-                    
-                    const exampleDatasets = [{
-                        label: "PRTC-B Data",
-                        data: parseData(exampleData),
-                        borderColor: lineColors[colorIndex++ % lineColors.length],
-                        backgroundColor: lineColors[colorIndex % lineColors.length],
-                        pointBackgroundColor: lineColors[colorIndex % lineColors.length],
-                        pointBorderColor: '#fff',
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
-                        showLine: true
-                    }];
                     createChart(exampleDatasets);
-                    updateGraphList();
-                    savePlotsToFirestore(); // Save the initial state
                 }
-            }, (error) => {
-                console.error("Error fetching data:", error);
-                loadingMessage.classList.add('hidden');
-            });
+                updateGraphList();
+            } else {
+                userId = null;
+                authStatus.textContent = 'You are not logged in. Sign in to save your plots.';
+                loggedOutView.classList.remove('hidden');
+                loggedInView.classList.add('hidden');
+                createChart(exampleDatasets);
+                updateGraphList();
+            }
         };
+
+        loginButton.addEventListener('click', async () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            if (!email || !password) {
+                showModal("Please enter both an email and password.");
+                return;
+            }
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showModal("Logged in successfully!");
+            } catch (error) {
+                showModal(`Login failed: ${error.message}`);
+                console.error("Login failed:", error);
+            }
+        });
+
+        signupButton.addEventListener('click', async () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            if (!email || !password) {
+                showModal("Please enter both an email and password.");
+                return;
+            }
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showModal("Account created and logged in successfully!");
+            } catch (error) {
+                showModal(`Sign up failed: ${error.message}`);
+                console.error("Sign up failed:", error);
+            }
+        });
+
+        logoutButton.addEventListener('click', async () => {
+            try {
+                await signOut(auth);
+                showModal("Logged out successfully.");
+            } catch (error) {
+                showModal(`Logout failed: ${error.message}`);
+                console.error("Logout failed:", error);
+            }
+        });
 
         plotButton.addEventListener('click', () => {
             const graphName = graphNameInput.value.trim();
             const data = parseData(dataInput.value);
-            if (data && data.length > 0 && graphName) {
-                errorMessage.classList.add('hidden');
+            const color = colorPicker.value;
+
+            if (!data || data.length === 0 || !graphName) {
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+            
+            if (!adevChart) {
+                createChart();
+            }
+
+            if (plotButton.textContent === 'Update Graph') {
+                const originalLabel = adevChart.data.datasets[editingIndex].label;
+                const nameExists = adevChart.data.datasets.some((dataset, index) => 
+                    index !== editingIndex && dataset.label === graphName
+                );
                 
-                if (!adevChart) {
-                    createChart();
+                if (nameExists) {
+                    showModal(`A graph named "${graphName}" already exists. Please use a unique name.`);
+                    return;
                 }
-
-                const newColor = lineColors[colorIndex++ % lineColors.length];
-
+                
+                adevChart.data.datasets[editingIndex].label = graphName;
+                adevChart.data.datasets[editingIndex].data = data;
+                adevChart.data.datasets[editingIndex].originalData = data;
+                adevChart.data.datasets[editingIndex].borderColor = color;
+                adevChart.data.datasets[editingIndex].backgroundColor = color;
+                adevChart.data.datasets[editingIndex].pointBackgroundColor = color;
+                
+                showModal(`Graph "${originalLabel}" has been updated to "${graphName}".`);
+            } else {
+                const nameExists = adevChart.data.datasets.some(dataset => dataset.label === graphName);
+                if (nameExists) {
+                    showModal(`A graph named "${graphName}" already exists. Please use a unique name.`);
+                    return;
+                }
+                
                 const newDataset = {
                     label: graphName,
                     data: data,
-                    borderColor: newColor,
-                    backgroundColor: newColor,
-                    pointBackgroundColor: newColor,
+                    originalData: data,
+                    borderColor: color,
+                    backgroundColor: color,
+                    pointBackgroundColor: color,
                     pointBorderColor: '#fff',
                     pointRadius: 6,
                     pointHoverRadius: 8,
                     showLine: true
                 };
-
                 adevChart.data.datasets.push(newDataset);
-                adevChart.update();
-                updateGraphList();
-                savePlotsToFirestore();
-
-                graphNameInput.value = '';
-                dataInput.value = '';
-
-            } else {
-                errorMessage.classList.remove('hidden');
+                showModal(`New graph "${graphName}" has been added.`);
             }
+
+            adevChart.update();
+            updateGraphList();
+            resetInputState();
         });
 
         clearButton.addEventListener('click', () => {
-            graphNameInput.value = '';
-            dataInput.value = '';
-            if (adevChart) {
-                adevChart.data.datasets = [];
-                adevChart.update();
-            }
+            createChart(exampleDatasets);
             updateGraphList();
-            savePlotsToFirestore();
-            errorMessage.classList.add('hidden');
+            resetInputState();
+            showModal("The chart has been reset to the default example plots.");
         });
 
-        // Initialize Firebase and set up a listener to load plots
+        saveButton.addEventListener('click', () => {
+            if (!userId) {
+                showModal("Please log in to save your private data.");
+                return;
+            }
+            const datasetsToSave = adevChart.data.datasets.map(dataset => ({
+                label: dataset.label,
+                data: dataset.data,
+                originalData: dataset.originalData,
+                color: dataset.borderColor
+            }));
+            const docData = { datasets: datasetsToSave };
+            saveToFirestore(privateDocRef, docData, "Your private data has been saved successfully!");
+        });
+
+        savePublicButton.addEventListener('click', async () => {
+            if (!userId) {
+                showModal("Please log in to save a public plot.");
+                return;
+            }
+            const publicName = publicNameInput.value.trim();
+            if (publicName === '') {
+                showModal("Please enter a public plot name to save.");
+                return;
+            }
+            
+            const publicDocRef = doc(db, `artifacts/${appId}/public/data/adev_plots/${publicName}`);
+            
+            const docSnap = await getDoc(publicDocRef);
+            if (docSnap.exists() && docSnap.data().creatorId !== userId) {
+                showModal(`Permission denied: The plot "${publicName}" was created by another user and cannot be overwritten.`);
+                return;
+            }
+
+            const datasetsToSave = adevChart.data.datasets.map(dataset => ({
+                label: dataset.label,
+                data: dataset.data,
+                originalData: dataset.originalData,
+                color: dataset.borderColor
+            }));
+
+            const docData = { datasets: datasetsToSave, creatorId: userId };
+            
+            saveToFirestore(publicDocRef, docData, `Plots saved publicly under the name: ${publicName}`);
+        });
+
+        loadPublicButton.addEventListener('click', async () => {
+            const publicName = publicNameInput.value.trim();
+            if (publicName === '') {
+                showModal("Please enter a public plot name to load.");
+                return;
+            }
+
+            const publicDocRef = doc(db, `artifacts/${appId}/public/data/adev_plots/${publicName}`);
+            const success = await loadFromFirestore(publicDocRef);
+            if (success) {
+                showModal(`Plots for "${publicName}" loaded successfully!`);
+            } else {
+                showModal(`No public plots found for the name: "${publicName}".`);
+            }
+        });
+
+        // Initialize Firebase
         window.addEventListener('load', async () => {
             try {
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
-
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        userIdDisplay.textContent = userId;
-                        firestoreDocRef = doc(db, `artifacts/${appId}/users/${userId}/adev_plots/myPlots`);
-                        console.log("Authenticated with user ID:", userId);
-                        loadPlotsFromFirestore();
-                    } else {
-                        try {
-                            const anonymousUser = await signInAnonymously(auth);
-                            userId = anonymousUser.user.uid;
-                            userIdDisplay.textContent = userId;
-                            firestoreDocRef = doc(db, `artifacts/${appId}/users/${userId}/adev_plots/myPlots`);
-                            console.log("Signed in anonymously with user ID:", userId);
-                            loadPlotsFromFirestore();
-                        } catch (error) {
-                            console.error("Error signing in anonymously:", error);
-                            loadingMessage.textContent = "Error authenticating. Please try again.";
-                        }
-                    }
-                });
+                
+                onAuthStateChanged(auth, handleAuthStateChange);
             } catch (e) {
                 console.error("Error initializing Firebase:", e);
                 loadingMessage.textContent = "Error initializing Firebase. Check your configuration.";
