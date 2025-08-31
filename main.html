@@ -25,12 +25,36 @@
             overflow-y: auto;
         }
     </style>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase services to the global scope
+        window.firebase = {
+            initializeApp,
+            getAuth,
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged,
+            getFirestore,
+            doc,
+            setDoc,
+            onSnapshot,
+            setLogLevel
+        };
+    </script>
 </head>
 <body class="bg-slate-100 text-slate-800 p-4 md:p-8 flex flex-col items-center">
     <main class="w-full max-w-4xl bg-white rounded-xl shadow-lg p-6 md:p-8">
         <header class="text-center mb-6">
             <h1 class="text-3xl md:text-4xl font-black text-slate-900">Allan Deviation (ADEV) Plotter</h1>
             <p class="mt-2 text-md text-slate-600">Enter your data to visualize frequency stability using an ADEV plot. You can now add and remove multiple graphs to compare different datasets.</p>
+            <div class="mt-4 text-xs font-semibold text-slate-500">
+                Your User ID: <span id="userIdDisplay" class="font-mono text-slate-700">Loading...</span>
+            </div>
         </header>
 
         <div id="chartSection" class="relative">
@@ -39,6 +63,9 @@
             </div>
             <div id="error-message" class="hidden absolute top-0 left-0 w-full h-full flex items-center justify-center bg-white bg-opacity-90 rounded-xl text-red-500 text-lg font-bold text-center p-4">
                 Invalid data format. Please use "tau, value" per line and provide a Graph Name.
+            </div>
+            <div id="loading-message" class="hidden absolute top-0 left-0 w-full h-full flex items-center justify-center bg-white bg-opacity-90 rounded-xl text-slate-500 text-lg font-bold text-center p-4">
+                Loading plots...
             </div>
         </div>
 
@@ -90,7 +117,9 @@ Example values:&#10;
         <p>Built with Chart.js and Tailwind CSS.</p>
     </footer>
 
-    <script>
+    <script type="module">
+        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, onSnapshot, setLogLevel } = window.firebase;
+        
         const energeticPalette = {
             blue1: '#2176FF',
             blue2: '#33A1FD',
@@ -100,22 +129,32 @@ Example values:&#10;
             subText: '#A0AEC0'
         };
 
-        // A vibrant color palette for multiple lines
         const lineColors = [
             '#2176FF', '#33A1FD', '#EF4444', '#10B981', '#F97316', '#6366F1', '#EC4899', '#84CC16', '#A855F7'
         ];
         let colorIndex = 0;
-
+        
         const chartCtx = document.getElementById('adevChart').getContext('2d');
         const graphNameInput = document.getElementById('graphName');
         const dataInput = document.getElementById('dataInput');
         const plotButton = document.getElementById('plotButton');
         const clearButton = document.getElementById('clearButton');
         const errorMessage = document.getElementById('error-message');
+        const loadingMessage = document.getElementById('loading-message');
         const activeGraphsList = document.getElementById('activeGraphsList');
+        const userIdDisplay = document.getElementById('userIdDisplay');
 
         let adevChart;
-
+        let db;
+        let auth;
+        let userId;
+        let firestoreDocRef;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : '';
+        
+        setLogLevel('debug');
+        
         const parseData = (data) => {
             if (!data) return null;
             const lines = data.split('\n').filter(line => line.trim() !== '' && !line.trim().startsWith('#'));
@@ -224,7 +263,7 @@ Example values:&#10;
 
         const updateGraphList = () => {
             activeGraphsList.innerHTML = '';
-            if (adevChart.data.datasets.length === 0) {
+            if (!adevChart || adevChart.data.datasets.length === 0) {
                 activeGraphsList.innerHTML = '<li class="text-slate-500">No graphs plotted yet.</li>';
                 return;
             }
@@ -239,14 +278,102 @@ Example values:&#10;
                 `;
                 activeGraphsList.appendChild(li);
             });
-
             document.querySelectorAll('.remove-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const index = e.target.getAttribute('data-index');
                     adevChart.data.datasets.splice(index, 1);
                     adevChart.update();
                     updateGraphList();
+                    savePlotsToFirestore();
                 });
+            });
+        };
+
+        const savePlotsToFirestore = async () => {
+            if (!userId) {
+                console.error("User not authenticated. Cannot save data.");
+                return;
+            }
+            
+            const datasetsToSave = adevChart.data.datasets.map(dataset => ({
+                label: dataset.label,
+                data: dataset.data
+            }));
+            
+            try {
+                await setDoc(firestoreDocRef, { datasets: datasetsToSave });
+                console.log("Plots saved successfully!");
+            } catch (e) {
+                console.error("Error saving plots to Firestore: ", e);
+            }
+        };
+
+        const loadPlotsFromFirestore = () => {
+            if (!userId) {
+                console.error("User not authenticated. Cannot load data.");
+                return;
+            }
+
+            loadingMessage.classList.remove('hidden');
+
+            // Listen for real-time updates to the document
+            onSnapshot(firestoreDocRef, (docSnap) => {
+                loadingMessage.classList.add('hidden');
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data && data.datasets) {
+                        const loadedDatasets = data.datasets.map(d => ({
+                            label: d.label,
+                            data: d.data,
+                            borderColor: lineColors[colorIndex++ % lineColors.length],
+                            backgroundColor: lineColors[colorIndex % lineColors.length],
+                            pointBackgroundColor: lineColors[colorIndex % lineColors.length],
+                            pointBorderColor: '#fff',
+                            pointRadius: 6,
+                            pointHoverRadius: 8,
+                            showLine: true
+                        }));
+                        createChart(loadedDatasets);
+                        updateGraphList();
+                    } else {
+                        // Document exists but is empty, clear the chart
+                        createChart();
+                        updateGraphList();
+                    }
+                } else {
+                    // Document does not exist, initialize with example data and save it
+                    const exampleData = `# White Noise (slope = -1/2)
+0.01, 1e-7
+0.1, 3e-8
+1, 1e-8
+10, 3e-9
+100, 1e-9
+
+# Bias Instability (flat floor)
+1000, 1.2e-9
+
+# Random Walk (slope = +1/2)
+10000, 4e-9
+100000, 1e-8`;
+                    
+                    const exampleDatasets = [{
+                        label: "Example Data",
+                        data: parseData(exampleData),
+                        borderColor: lineColors[colorIndex++ % lineColors.length],
+                        backgroundColor: lineColors[colorIndex % lineColors.length],
+                        pointBackgroundColor: lineColors[colorIndex % lineColors.length],
+                        pointBorderColor: '#fff',
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        showLine: true
+                    }];
+                    createChart(exampleDatasets);
+                    updateGraphList();
+                    savePlotsToFirestore(); // Save the initial state
+                }
+            }, (error) => {
+                console.error("Error fetching data:", error);
+                loadingMessage.classList.add('hidden');
             });
         };
 
@@ -260,8 +387,7 @@ Example values:&#10;
                     createChart();
                 }
 
-                const newColor = lineColors[colorIndex % lineColors.length];
-                colorIndex++;
+                const newColor = lineColors[colorIndex++ % lineColors.length];
 
                 const newDataset = {
                     label: graphName,
@@ -278,6 +404,7 @@ Example values:&#10;
                 adevChart.data.datasets.push(newDataset);
                 adevChart.update();
                 updateGraphList();
+                savePlotsToFirestore();
 
                 graphNameInput.value = '';
                 dataInput.value = '';
@@ -295,38 +422,42 @@ Example values:&#10;
                 adevChart.update();
             }
             updateGraphList();
+            savePlotsToFirestore();
             errorMessage.classList.add('hidden');
         });
 
-        const exampleData = `# White Noise (slope = -1/2)
-0.01, 1e-7
-0.1, 3e-8
-1, 1e-8
-10, 3e-9
-100, 1e-9
+        // Initialize Firebase and set up a listener to load plots
+        window.addEventListener('load', async () => {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
 
-# Bias Instability (flat floor)
-1000, 1.2e-9
-
-# Random Walk (slope = +1/2)
-10000, 4e-9
-100000, 1e-8`;
-
-        window.addEventListener('load', () => {
-            graphNameInput.value = "Example Data";
-            dataInput.value = exampleData;
-            plotButton.click();
-            graphNameInput.value = "Example 2";
-            dataInput.value = `0.01, 5e-8
-0.1, 8e-9
-1, 2e-9
-10, 1e-9
-100, 5e-10
-1000, 8e-10
-10000, 2e-9`;
-            plotButton.click();
-            graphNameInput.value = "";
-            dataInput.value = "";
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = userId;
+                        firestoreDocRef = doc(db, `artifacts/${appId}/users/${userId}/adev_plots/myPlots`);
+                        console.log("Authenticated with user ID:", userId);
+                        loadPlotsFromFirestore();
+                    } else {
+                        try {
+                            const anonymousUser = await signInAnonymously(auth);
+                            userId = anonymousUser.user.uid;
+                            userIdDisplay.textContent = userId;
+                            firestoreDocRef = doc(db, `artifacts/${appId}/users/${userId}/adev_plots/myPlots`);
+                            console.log("Signed in anonymously with user ID:", userId);
+                            loadPlotsFromFirestore();
+                        } catch (error) {
+                            console.error("Error signing in anonymously:", error);
+                            loadingMessage.textContent = "Error authenticating. Please try again.";
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("Error initializing Firebase:", e);
+                loadingMessage.textContent = "Error initializing Firebase. Check your configuration.";
+            }
         });
     </script>
 </body>
