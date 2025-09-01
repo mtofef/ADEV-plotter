@@ -570,10 +570,15 @@ Example values:&#10;
                         },
                         tooltip: {
                             callbacks: {
-                                title: (context) => context[0].dataset.label,
+                                // Remove the tooltip title
+                                title: () => '',
+                                // Format the tooltip label as a single line
                                 label: function(context) {
                                     const { x, y } = context.raw;
-                                    return `τ: ${x.toExponential(2)}\nσy(τ): ${y.toExponential(2)}`;
+                                    const exponent = Math.log10(x);
+                                    const formattedX = `10${getSuperscript(exponent.toFixed(2))} s`;
+                                    const formattedY = `${y.toExponential(2)}`;
+                                    return `${formattedX}, ${formattedY}`;
                                 }
                             }
                         },
@@ -583,14 +588,14 @@ Example values:&#10;
                                 mode: 'xy',
                             },
                             zoom: {
-                                wheel: {
+                                drag: {
                                     enabled: true,
-                                },
-                                pinch: {
-                                    enabled: true
+                                    borderColor: 'rgb(54, 162, 235)',
+                                    borderWidth: 2,
+                                    backgroundColor: 'rgba(54, 162, 235, 0.2)'
                                 },
                                 mode: 'xy',
-                            }
+                            },
                         }
                     },
                     scales: {
@@ -635,6 +640,13 @@ Example values:&#10;
                             }
                         }
                     }
+                }
+            });
+
+            chartCtx.canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (adevChart) {
+                    adevChart.resetZoom();
                 }
             });
         };
