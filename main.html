@@ -106,6 +106,22 @@
             color: #A0AEC0;
             font-style: italic;
         }
+        .custom-tooltip {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            pointer-events: none;
+            position: absolute;
+            transform: translate(-50%, -100%);
+            transition: opacity 0.2s ease-in-out;
+            opacity: 0;
+            z-index: 10;
+        }
+        .custom-tooltip.visible {
+            opacity: 1;
+        }
     </style>
     <!-- Firebase SDKs -->
     <script type="module">
@@ -227,6 +243,8 @@
         <div id="chartSection" class="relative">
             <div class="chart-container">
                 <canvas id="adevChart"></canvas>
+                <!-- Custom Tooltip container -->
+                <div id="chartjs-tooltip" class="custom-tooltip"></div>
             </div>
             <div id="error-message" class="hidden absolute top-0 left-0 w-full h-full flex items-center justify-center bg-white bg-opacity-90 rounded-xl text-red-500 text-lg font-bold text-center p-4">
                 Invalid data format. Please use "tau, value" per line and provide a Graph Name.
@@ -332,6 +350,7 @@ Example values:&#10;
         };
 
         const chartCtx = document.getElementById('adevChart').getContext('2d');
+        const chartTooltipEl = document.getElementById('chartjs-tooltip');
         const graphNameInput = document.getElementById('graphName');
         const dataInput = document.getElementById('dataInput');
         const colorPicker = document.getElementById('colorPicker');
@@ -568,19 +587,9 @@ Example values:&#10;
                                 }
                             }
                         },
-                        tooltip: {
-                            callbacks: {
-                                // Remove the tooltip title
-                                title: () => '',
-                                // Format the tooltip label as a single line
-                                label: function(context) {
-                                    const { x, y } = context.raw;
-                                    const exponent = Math.log10(x);
-                                    const formattedX = `10${getSuperscript(exponent.toFixed(2))} s`;
-                                    const formattedY = `${y.toExponential(2)}`;
-                                    return `${formattedX}, ${formattedY}`;
-                                }
-                            }
+                         tooltip: {
+                            enabled: false,
+                            external: customTooltip
                         },
                          zoom: {
                             pan: {
@@ -649,6 +658,39 @@ Example values:&#10;
                     adevChart.resetZoom();
                 }
             });
+        };
+
+        const customTooltip = (context) => {
+            const { chart, tooltip } = context;
+            
+            if (tooltip.opacity === 0) {
+                chartTooltipEl.style.opacity = 0;
+                return;
+            }
+
+            // Set tooltip position relative to the cursor
+            const x = chart.canvas.offsetLeft + tooltip.caretX;
+            const y = chart.canvas.offsetTop + tooltip.caretY;
+            
+            chartTooltipEl.style.left = `${x}px`;
+            chartTooltipEl.style.top = `${y}px`;
+            chartTooltipEl.style.transform = `translate(-50%, -110%)`; // Corrected transform to place it above the point
+
+            // Check if there is data
+            if (tooltip.dataPoints.length > 0) {
+                const dataPoint = tooltip.dataPoints[0];
+                const tauValue = dataPoint.parsed.x;
+                const adevValue = dataPoint.parsed.y;
+                
+                const formattedTau = `τ: 10${getSuperscript(Math.log10(tauValue).toFixed(2))} s`;
+                const formattedAdev = `σy(τ): ${adevValue.toExponential(2)}`;
+                
+                chartTooltipEl.innerHTML = `
+                    <div>${formattedTau}</div>
+                    <div>${formattedAdev}</div>
+                `;
+                chartTooltipEl.style.opacity = 1;
+            }
         };
 
         const updateGraphList = () => {
