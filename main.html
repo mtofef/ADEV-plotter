@@ -617,7 +617,14 @@ Example values:&#10;
                                 font: { size: 16, weight: 'bold' }
                             },
                             grid: {
-                                color: energeticPalette.blue4,
+                                // Only draw grid lines for power of 10 values
+                                color: function(context) {
+                                    const value = context.tick.value;
+                                    if (Math.log10(value) % 1 === 0) {
+                                        return energeticPalette.blue4;
+                                    }
+                                    return 'rgba(0, 0, 0, 0)';
+                                }
                             },
                             ticks: {
                                 color: energeticPalette.subText,
@@ -639,14 +646,20 @@ Example values:&#10;
                                 font: { size: 16, weight: 'bold' }
                             },
                             grid: {
-                                color: energeticPalette.blue4,
+                                // Only draw grid lines for power of 10 values
+                                color: function(context) {
+                                    const value = context.tick.value;
+                                    if (Math.log10(value) % 1 === 0) {
+                                        return energeticPalette.blue4;
+                                    }
+                                    return 'rgba(0, 0, 0, 0)';
+                                }
                             },
                             ticks: {
                                 color: energeticPalette.subText,
                                 callback: function(value, index, values) {
-                                    // Only show tick labels that are a power of 10
-                                    if (Math.log10(value) % 1 === 0) {
-                                        const exponent = Math.round(Math.log10(value));
+                                    const exponent = Math.round(Math.log10(value));
+                                    if (exponent % 1 === 0) {
                                         return `10${getSuperscript(exponent)}`;
                                     }
                                     return '';
