@@ -643,8 +643,13 @@ Example values:&#10;
                             },
                             ticks: {
                                 color: energeticPalette.subText,
-                                callback: function(value) {
-                                    return value.toExponential();
+                                callback: function(value, index, values) {
+                                    // Only show tick labels that are a power of 10
+                                    if (Math.log10(value) % 1 === 0) {
+                                        const exponent = Math.round(Math.log10(value));
+                                        return `10${getSuperscript(exponent)}`;
+                                    }
+                                    return '';
                                 }
                             }
                         }
