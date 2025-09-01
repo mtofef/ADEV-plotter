@@ -655,11 +655,12 @@ Example values:&#10;
                                     return 'rgba(0, 0, 0, 0)';
                                 }
                             },
+                            // This callback filters the ticks, so only powers of 10 are displayed.
                             ticks: {
                                 color: energeticPalette.subText,
                                 callback: function(value, index, values) {
                                     const exponent = Math.round(Math.log10(value));
-                                    if (exponent % 1 === 0) {
+                                    if (Math.pow(10, exponent) === value) {
                                         return `10${getSuperscript(exponent)}`;
                                     }
                                     return '';
